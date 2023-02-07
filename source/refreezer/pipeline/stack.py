@@ -129,6 +129,13 @@ class PipelineStack(Stack):
                         f"arn:aws:sns:{Aws.REGION}:{Aws.ACCOUNT_ID}:{STACK_NAME}-AsyncFacilitatorTopic*"
                     ],
                 ),
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=["states:StartExecution", "states:DescribeStateMachine"],
+                    resources=[
+                        f"arn:aws:states:{Aws.REGION}:{Aws.ACCOUNT_ID}:stateMachine:InitiateRetrievalNestedDistributedMapStateMachine*"
+                    ],
+                ),
             ],
             partial_build_spec=self.get_reports_partial_build_spec(
                 "pytest-integration-report.xml"

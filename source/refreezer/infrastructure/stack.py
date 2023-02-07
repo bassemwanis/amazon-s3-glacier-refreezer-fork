@@ -21,6 +21,7 @@ from refreezer.infrastructure.nested_distributed_map import NestedDistributedMap
 class OutputKeys:
     ASYNC_FACILITATOR_TABLE_NAME = "AsyncFacilitatorTableName"
     ASYNC_FACILITATOR_TOPIC_ARN = "AsyncFacilitatorTopicArn"
+    INITIATE_RETRIEVAL_STATE_MACHINE_ARN = "InitiateRetrievalStateMachineArn"
 
 
 class RefreezerStack(Stack):
@@ -66,6 +67,12 @@ class RefreezerStack(Stack):
             )
         )
 
+        self.outputs[OutputKeys.ASYNC_FACILITATOR_TOPIC_ARN] = CfnOutput(
+            self,
+            OutputKeys.ASYNC_FACILITATOR_TOPIC_ARN,
+            value=topic.topic_arn,
+        )
+
         access_log_bucket = s3.Bucket(
             self,
             "AccessLogBucket",
@@ -92,7 +99,7 @@ class RefreezerStack(Stack):
         # TODO to be replaced by Initiate Retrieval state machine inner logic.
         inner_logic_definition = sfn.Succeed(self, "Test Success state")
 
-        NestedDistributedMap(
+        initiate_retrieval_nested_distributed_map = NestedDistributedMap(
             self,
             nested_distributed_map_id="InitiateRetrievalNestedDistributedMap",
             bucket=inventory_bucket,
@@ -100,8 +107,8 @@ class RefreezerStack(Stack):
             max_concurrency=1,
         )
 
-        self.outputs[OutputKeys.ASYNC_FACILITATOR_TOPIC_ARN] = CfnOutput(
+        self.outputs[OutputKeys.INITIATE_RETRIEVAL_STATE_MACHINE_ARN] = CfnOutput(
             self,
-            OutputKeys.ASYNC_FACILITATOR_TOPIC_ARN,
-            value=topic.topic_arn,
+            OutputKeys.INITIATE_RETRIEVAL_STATE_MACHINE_ARN,
+            value=initiate_retrieval_nested_distributed_map.state_machine.state_machine_arn,
         )
