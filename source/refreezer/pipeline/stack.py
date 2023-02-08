@@ -14,9 +14,11 @@ from constructs import Construct
 
 from refreezer.pipeline.source import CodeStarSource
 from refreezer.infrastructure.stack import RefreezerStack
+from refreezer.infrastructure.mock_stack import MockStack
 
 DEPLOY_STAGE_NAME = "test-deploy"
 REFREEZER_STACK_NAME = "refreezer"
+REFREEZER_MOCK_STACK_NAME = "mock"
 STACK_NAME = f"{DEPLOY_STAGE_NAME}-{REFREEZER_STACK_NAME}"
 
 
@@ -142,6 +144,12 @@ class PipelineStack(Stack):
             ),
         )
 
+    def get_mock_step(self) -> pipelines.CodeBuildStep:
+        return pipelines.CodeBuildStep(
+            "MockTest",
+            commands=["echo Done"],
+        )
+
     def get_reports_partial_build_spec(self, filename: str) -> codebuild.BuildSpec:
         return codebuild.BuildSpec.from_object(
             {
@@ -158,5 +166,7 @@ class PipelineStack(Stack):
 class DeployStage(Stage):
     def __init__(self, scope: Construct, construct_id: str) -> None:
         super().__init__(scope, construct_id)
-
-        self.refreezer_stack = RefreezerStack(self, REFREEZER_STACK_NAME)
+        self.refreezer_mock_stack = MockStack(self, REFREEZER_MOCK_STACK_NAME)
+        self.refreezer_stack = RefreezerStack(
+            self, REFREEZER_STACK_NAME, self.refreezer_mock_stack.wait_state
+        )
