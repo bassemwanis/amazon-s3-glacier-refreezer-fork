@@ -168,5 +168,5 @@ class DeployStage(Stage):
         super().__init__(scope, construct_id)
         self.refreezer_mock_stack = MockStack(self, REFREEZER_MOCK_STACK_NAME)
         self.refreezer_stack = RefreezerStack(
-            self, REFREEZER_STACK_NAME, self.refreezer_mock_stack.wait_state
+            self, REFREEZER_STACK_NAME, self.refreezer_mock_stack.lambda_invoke_task
         )
