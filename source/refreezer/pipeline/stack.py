@@ -166,7 +166,14 @@ class PipelineStack(Stack):
 class DeployStage(Stage):
     def __init__(self, scope: Construct, construct_id: str) -> None:
         super().__init__(scope, construct_id)
-        self.refreezer_mock_stack = MockStack(self, REFREEZER_MOCK_STACK_NAME)
+        refreezer_mock_stack = MockStack(self, REFREEZER_MOCK_STACK_NAME)
+        mock_params = {
+            "glacier_step": refreezer_mock_stack.lambda_invoke_task,
+            "lambda_function_arn": refreezer_mock_stack.lambda_function_arn,
+        }
         self.refreezer_stack = RefreezerStack(
-            self, REFREEZER_STACK_NAME, self.refreezer_mock_stack.lambda_invoke_task
+            # self, REFREEZER_STACK_NAME, self.refreezer_mock_stack.lambda_invoke_task
+            self,
+            REFREEZER_STACK_NAME,
+            mock_params,
         )

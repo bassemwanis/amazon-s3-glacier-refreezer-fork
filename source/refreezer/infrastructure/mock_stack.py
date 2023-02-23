@@ -15,6 +15,7 @@ from cdk_nag import NagSuppressions
 
 class MockStack(Stack):
     lambda_invoke_task: sfn.INextable
+    lambda_function_arn: str
 
     def __init__(self, scope: Construct, construct_id: str) -> None:
         super().__init__(scope, construct_id)
@@ -28,8 +29,13 @@ class MockStack(Stack):
         )
 
         self.lambda_invoke_task = tasks.LambdaInvoke(
-            scope, "MockLambdaTask", lambda_function=mock_lambda
+            scope,
+            "MockLambdaTask",
+            lambda_function=mock_lambda,
+            payload_response_only=True,
         )
+
+        self.lambda_function_arn = mock_lambda.function_arn
 
         assert mock_lambda.role is not None
         NagSuppressions.add_resource_suppressions(

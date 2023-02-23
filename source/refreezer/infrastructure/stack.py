@@ -18,7 +18,7 @@ from aws_cdk import aws_stepfunctions_tasks as tasks
 from aws_cdk import RemovalPolicy
 from constructs import Construct
 from refreezer.infrastructure.nested_distributed_map import NestedDistributedMap
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 class OutputKeys:
@@ -34,7 +34,8 @@ class RefreezerStack(Stack):
         self,
         scope: Construct,
         construct_id: str,
-        mock_step: Optional[sfn.INextable] = None,
+        mock_params: Optional[Dict[str, Any]] = None,
+        # mock_step: Optional[sfn.INextable] = None,
     ) -> None:
         super().__init__(scope, construct_id)
 
@@ -136,10 +137,16 @@ class RefreezerStack(Stack):
             },
             table=table,
         )
-        if mock_step is None:
-            mock_step = initiate_retrieval_glacier_initiate_job
 
-        inner_logic_definition = mock_step.next(
+        glacier_step = initiate_retrieval_glacier_initiate_job
+
+        if mock_params is not None:
+            glacier_step = mock_params["glacier_step"]
+
+        # if mock_step is None:
+        #     mock_step = initiate_retrieval_glacier_initiate_job
+
+        inner_logic_definition = glacier_step.next(
             initiate_retrieval_dynamodb_put_item
         ).next(success_state)
 
@@ -151,35 +158,41 @@ class RefreezerStack(Stack):
             max_concurrency=1,
         )
 
-        state_policy = iam.Policy(
-            self,
-            "StateMachinePolicy",
-            statements=[
-                iam.PolicyStatement(
-                    effect=iam.Effect.ALLOW,
-                    actions=[
-                        "glacier:InitiateJob",
-                    ],
-                    resources=[
-                        "arn:aws:glacier:"
-                        + Stack.of(self).region
-                        + ":"
-                        + Stack.of(self).account
-                        + ":vaults/"
-                        + vault_name
-                    ],
-                ),
-                iam.PolicyStatement(
-                    effect=iam.Effect.ALLOW,
-                    actions=[
-                        "lambda:InvokeFunction",
-                    ],
-                    resources=[
-                        "arn:aws:lambda:us-east-1:439780116353:function:test-deploy-mock-MockGalcierServiceCA3E1726-q666VM0l7xH5"
-                    ],
-                ),
-            ],
-        )
+        if mock_params is not None:
+            state_policy = iam.Policy(
+                self,
+                "StateMachinePolicy",
+                statements=[
+                    iam.PolicyStatement(
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "lambda:InvokeFunction",
+                        ],
+                        resources=[mock_params["lambda_function_arn"]],
+                    ),
+                ],
+            )
+        else:
+            state_policy = iam.Policy(
+                self,
+                "StateMachinePolicy",
+                statements=[
+                    iam.PolicyStatement(
+                        effect=iam.Effect.ALLOW,
+                        actions=[
+                            "glacier:InitiateJob",
+                        ],
+                        resources=[
+                            "arn:aws:glacier:"
+                            + Stack.of(self).region
+                            + ":"
+                            + Stack.of(self).account
+                            + ":vaults/"
+                            + vault_name
+                        ],
+                    ),
+                ],
+            )
 
         state_policy.attach_to_role(
             initiate_retrieval_nested_distributed_map.state_machine.role
