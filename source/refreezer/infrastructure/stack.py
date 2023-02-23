@@ -168,7 +168,16 @@ class RefreezerStack(Stack):
                         + ":vaults/"
                         + vault_name
                     ],
-                )
+                ),
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "lambda:InvokeFunction",
+                    ],
+                    resources=[
+                        "arn:aws:lambda:us-east-1:439780116353:function:test-deploy-mock-MockGalcierServiceCA3E1726-q666VM0l7xH5"
+                    ],
+                ),
             ],
         )
 
