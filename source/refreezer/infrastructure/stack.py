@@ -12,9 +12,12 @@ from aws_cdk import aws_iam as iam
 from aws_cdk import aws_kms as kms
 from aws_cdk import aws_sns as sns
 from aws_cdk import aws_s3 as s3
+from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import RemovalPolicy
 from cdk_nag import NagSuppressions
 from constructs import Construct
+
+from refreezer.infrastructure.distributed_map import DistributedMap
 
 
 class OutputKeys:
@@ -22,6 +25,7 @@ class OutputKeys:
     ASYNC_FACILITATOR_TOPIC_ARN = "AsyncFacilitatorTopicArn"
     OUTPUT_BUCKET_NAME = "OutputBucketName"
     INVENTORY_BUCKET_NAME = "InventoryBucketName"
+    INVENTORY_RETRIEVAL_STATE_MACHINE_ARN = "InventoryRetrievalStateMachineArn"
 
 
 class RefreezerStack(Stack):
@@ -128,3 +132,113 @@ class RefreezerStack(Stack):
                 }
             ],
         )
+
+        test_pass_chunk_array = sfn.Pass(
+            self,
+            "PassChunkArray",
+            parameters={
+                "chunk_array": [
+                    "0-1",
+                    "2-3",
+                    "4-5",
+                    "6-7",
+                    "8-9",
+                    "10-11",
+                    "12-13",
+                    "14-15",
+                ]
+            },
+        )
+
+        test_pass_state = sfn.Pass(self, "JustPassState")
+        test_succeed_state = sfn.Succeed(self, "JustSucceedState")
+        test_definition = test_pass_state.next(test_succeed_state)
+
+        chunks_distributed_map = DistributedMap(
+            scope,
+            "ChunksDistributedMap",
+            definition=test_definition,
+            items_path="$.chunk_array",
+        )
+
+        another_test_succeed_state = sfn.Succeed(self, "AnotherJustSucceedState")
+        another_test_definition = another_test_succeed_state
+        another_chunks_distributed_map = DistributedMap(
+            scope,
+            "AnotherChunksDistributedMap",
+            definition=another_test_definition,
+            items_path="$.chunk_array",
+        )
+
+        state_json = {
+            "Type": "Task",
+            "Parameters": {
+                "AccountId": Stack.of(self).account,
+                "JobParameters": {
+                    "Type": "inventory-retrieval",
+                    "Description.$": "$.description",
+                    "Format": "CSV",
+                    "SnsTopic": topic.topic_arn,
+                },
+                "VaultName.$": "$.vaultName",
+            },
+            "Resource": "arn:aws:states:::aws-sdk:glacier:initiateJob",
+        }
+        initiate_job = sfn.CustomState(scope, "InitiateJob", state_json=state_json)
+
+        definition = test_pass_chunk_array.next(chunks_distributed_map).next(
+            another_chunks_distributed_map
+        )
+
+        inventory_retrieval_state_machine = sfn.StateMachine(
+            self, "InventoryRetrievalStateMachine", definition=definition
+        )
+
+        self.outputs[OutputKeys.INVENTORY_RETRIEVAL_STATE_MACHINE_ARN] = CfnOutput(
+            self,
+            OutputKeys.INVENTORY_RETRIEVAL_STATE_MACHINE_ARN,
+            value=inventory_retrieval_state_machine.state_machine_arn,
+        )
+
+        NagSuppressions.add_resource_suppressions(
+            inventory_retrieval_state_machine,
+            [
+                {
+                    "id": "AwsSolutions-SF1",
+                    "reason": "Step Function logging is disabled and will be addressed later.",
+                },
+                {
+                    "id": "AwsSolutions-SF2",
+                    "reason": "Step Function X-Ray tracing is disabled and will be addressed later.",
+                },
+            ],
+        )
+
+        state_machine_policy = iam.Policy(
+            self,
+            "StateMachinePolicy",
+            statements=[
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "states:StartExecution",
+                    ],
+                    resources=[inventory_retrieval_state_machine.state_machine_arn],
+                ),
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=["states:DescribeExecution", "states:StopExecution"],
+                    resources=[
+                        "arn:aws:states:"
+                        + Stack.of(self).region
+                        + ":"
+                        + Stack.of(self).account
+                        + ":execution:"
+                        + inventory_retrieval_state_machine.state_machine_name
+                        + "/*"
+                    ],
+                ),
+            ],
+        )
+
+        state_machine_policy.attach_to_role(inventory_retrieval_state_machine.role)
