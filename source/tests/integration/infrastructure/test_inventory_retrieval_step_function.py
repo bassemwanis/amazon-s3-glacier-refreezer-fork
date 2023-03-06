@@ -47,6 +47,11 @@ def test_state_machine_start_execution_provided_inventory_no() -> None:
     assert "InventoryRetrieved" in sf_output
 
 
+def test_dynamo_db_put_item_async_behavior() -> None:
+    # TODO the implementation of this test is pending mock glacier service
+    pass
+
+
 def get_state_machine_output(executionArn: str, timeout: int) -> str:
     client: SFNClient = boto3.client("stepfunctions")
     start_time = time.time()

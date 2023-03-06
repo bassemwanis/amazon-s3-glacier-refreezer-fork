@@ -136,9 +136,28 @@ class RefreezerStack(Stack):
         # TODO: To be replaced by InitiateJob custom state for Step Function SDK integration
         initiate_job = sfn.Pass(self, "InitiateJob")
 
-        # TODO: To be replaced by DynamoDB Put custom state for Step Function SDK integration
-        # pause the workflow using waitForTaskToken mechanism
-        dynamo_db_put = sfn.Pass(self, "DynamoDBPut")
+        dynamo_db_put_state_json = {
+            "Type": "Task",
+            "Parameters": {
+                "TableName": table.table_name,
+                "Item": {
+                    "task_token": {
+                        "S.$": "$$.Task.Token",
+                    },
+                    "job_id": {
+                        "S.$": "$.JobId",
+                    },
+                    "start": {
+                        "S.$": "$$.Execution.StartTime",
+                    },
+                },
+            },
+            "Resource": "arn:aws:states:::aws-sdk:dynamodb:putItem.waitForTaskToken",
+        }
+
+        dynamo_db_put = sfn.CustomState(
+            scope, "DynamoDBPut", state_json=dynamo_db_put_state_json
+        )
 
         # TODO: To be replaced by GenerateChunkArray LambdaInvoke task
         # which will retrun the chunks array
@@ -184,6 +203,8 @@ class RefreezerStack(Stack):
         inventory_retrieval_state_machine = sfn.StateMachine(
             self, "InventoryRetrievalStateMachine", definition=definition
         )
+
+        table.grant_read_write_data(inventory_retrieval_state_machine)
 
         self.outputs[OutputKeys.INVENTORY_RETRIEVAL_STATE_MACHINE_ARN] = CfnOutput(
             self,

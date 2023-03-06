@@ -179,6 +179,12 @@ def test_get_inventory_step_function_created(
 ) -> None:
     resources_list = ["InventoryRetrievalStateMachine"]
     logical_id = get_logical_id(stack, resources_list)
+    table_logical_id = get_logical_id(stack, ["AsyncFacilitatorTable"])
+    print("#########################################")
+    import json
+
+    print(json.dumps(template.to_json()))
+    print("#########################################")
     assert_resource_name_has_correct_type_and_props(
         stack,
         template,
@@ -186,21 +192,35 @@ def test_get_inventory_step_function_created(
         cfn_type="AWS::StepFunctions::StateMachine",
         props={
             "Properties": {
-                "DefinitionString": assertions.Match.string_like_regexp(
-                    (
-                        r'{"StartAt":"Provided Inventory\?",'
-                        r'"States":{"Provided Inventory\?":{"Type":"Choice","Choices":\['
-                        r'{"Variable":"\$.provided_inventory","StringEquals":"YES","Next":"GlueOrderArchives"}\],'
-                        r'"Default":"InitiateJob"},'
-                        r'"InitiateJob":{"Type":"Pass","Next":"DynamoDBPut"},'
-                        r'"DynamoDBPut":{"Type":"Pass","Next":"GenerateChunkArrayLambda"},'
-                        r'"GenerateChunkArrayLambda":{"Type":"Pass","Parameters":{"chunk_array":\["\d+-\d+"(,+"\d+-\d+")+\]},"Next":"DistributedMap"},'
-                        r'"DistributedMap":{"Type":"Map","Next":"GlueOrderArchives","Iterator":{"StartAt":"InventoryChunkDownloadLambda",'
-                        r'"States":{"InventoryChunkDownloadLambda":{"Type":"Pass","Parameters":{"InventoryRetrieved":"TRUE"},"End":true}}},"ItemsPath":"\$.chunk_array"},'
-                        r'"GlueOrderArchives":{"Type":"Pass","Next":"InventoryValidationLambda"},'
-                        r'"InventoryValidationLambda":{"Type":"Pass","End":true}}}'
-                    )
-                )
+                "DefinitionString": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            assertions.Match.string_like_regexp(
+                                (
+                                    r'{"StartAt":"Provided Inventory\?",'
+                                    r'"States":{"Provided Inventory\?":{"Type":"Choice","Choices":\['
+                                    r'{"Variable":"\$.provided_inventory","StringEquals":"YES","Next":"GlueOrderArchives"}\],'
+                                    r'"Default":"InitiateJob"},'
+                                    r'"InitiateJob":{"Type":"Pass","Next":"DynamoDBPut"},'
+                                    r'"DynamoDBPut":{"Next":"GenerateChunkArrayLambda","Type":"Task","Parameters":{"TableName":"'
+                                )
+                            ),
+                            {"Ref": table_logical_id},
+                            assertions.Match.string_like_regexp(
+                                (
+                                    r'","Item":{"task_token":{"S.\$":"\$\$.Task.Token"},"job_id":{"S.\$":"\$.JobId"},"start":{"S.\$":"\$\$.Execution.StartTime"}}},'
+                                    r'"Resource":"arn:aws:states:::aws-sdk:dynamodb:putItem.waitForTaskToken"},'
+                                    r'"GenerateChunkArrayLambda":{"Type":"Pass","Parameters":{"chunk_array":\["\d+-\d+"(,+"\d+-\d+")+\]},"Next":"DistributedMap"},'
+                                    r'"DistributedMap":{"Type":"Map","Next":"GlueOrderArchives","Iterator":{"StartAt":"InventoryChunkDownloadLambda",'
+                                    r'"States":{"InventoryChunkDownloadLambda":{"Type":"Pass","Parameters":{"InventoryRetrieved":"TRUE"},"End":true}}},"ItemsPath":"\$.chunk_array"},'
+                                    r'"GlueOrderArchives":{"Type":"Pass","Next":"InventoryValidationLambda"},'
+                                    r'"InventoryValidationLambda":{"Type":"Pass","End":true}}}'
+                                )
+                            ),
+                        ],
+                    ]
+                }
             }
         },
     )
