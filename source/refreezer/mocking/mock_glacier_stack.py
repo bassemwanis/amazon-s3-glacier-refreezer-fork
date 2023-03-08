@@ -19,6 +19,15 @@ class MockGlacierStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str) -> None:
         super().__init__(scope, construct_id)
+        mock_notify_sns_lambda = lambda_.Function(
+            self,
+            "MockNotifySns",
+            handler="refreezer.application.mocking.handlers.mock_notify_sns_handler",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            code=lambda_.Code.from_asset("source"),
+            description="Lambda to mock notifying SNS job completion.",
+        )
+
         mock_glacier_initiate_job_lambda = lambda_.Function(
             self,
             "MockGlacierService",
@@ -26,7 +35,12 @@ class MockGlacierStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_9,
             code=lambda_.Code.from_asset("source"),
             description="Lambda to mock Glacier service initiate job task for integration tests.",
+            environment={
+                "MOCK_NOTIFY_SNS_LAMBDA_ARN": mock_notify_sns_lambda.function_arn,
+            },
         )
+
+        mock_notify_sns_lambda.grant_invoke(mock_glacier_initiate_job_lambda)
 
         mock_glacier_initiate_job_task = tasks.LambdaInvoke(
             scope,
