@@ -15,10 +15,12 @@ from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import RemovalPolicy
+from aws_cdk import CfnElement
 from cdk_nag import NagSuppressions
 from constructs import Construct
 from typing import Optional, Union
 
+from refreezer.infrastructure.distributed_map import DistributedMap
 from refreezer.mocking.mock_glacier_stack import MockingParams
 
 
@@ -196,11 +198,12 @@ class RefreezerStack(Stack):
             parameters={"InventoryRetrieved": "TRUE"},
         )
 
-        # TODO: To be replaced by Map state in Distributed mode
-        distributed_map_state = sfn.Map(
-            self, "DistributedMap", items_path="$.chunk_array"
+        distributed_map_state = DistributedMap(
+            self,
+            "ChunksDistributedMap",
+            definition=inventory_chunk_download_lambda,
+            items_path="$.chunk_array",
         )
-        distributed_map_state.iterator(inventory_chunk_download_lambda)
 
         # TODO: To be replaced by Glue task
         glue_order_archives = sfn.Pass(self, "GlueOrderArchives")
@@ -225,6 +228,58 @@ class RefreezerStack(Stack):
 
         inventory_retrieval_state_machine = sfn.StateMachine(
             self, "InventoryRetrievalStateMachine", definition=definition
+        )
+
+        inventory_retrieval_state_machine_policy = iam.Policy(
+            self,
+            "StateMachinePolicy",
+            statements=[
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "states:StartExecution",
+                    ],
+                    resources=[inventory_retrieval_state_machine.state_machine_arn],
+                ),
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=["states:DescribeExecution", "states:StopExecution"],
+                    resources=[
+                        "arn:aws:states:"
+                        + Stack.of(self).region
+                        + ":"
+                        + Stack.of(self).account
+                        + ":execution:"
+                        + inventory_retrieval_state_machine.state_machine_name
+                        + "/*"
+                    ],
+                ),
+            ],
+        )
+
+        inventory_retrieval_state_machine_policy.attach_to_role(
+            inventory_retrieval_state_machine.role
+        )
+
+        assert isinstance(
+            inventory_retrieval_state_machine.node.default_child, CfnElement
+        )
+        inventory_retrieval_state_machine_logical_id = Stack.of(self).get_logical_id(
+            inventory_retrieval_state_machine.node.default_child
+        )
+        NagSuppressions.add_resource_suppressions(
+            inventory_retrieval_state_machine_policy,
+            [
+                {
+                    "id": "AwsSolutions-IAM5",
+                    "reason": "IAM policy needed to run a Distributed Map state. https://docs.aws.amazon.com/step-functions/latest/dg/iam-policies-eg-dist-map.html",
+                    "appliesTo": [
+                        "Resource::arn:aws:states:<AWS::Region>:<AWS::AccountId>:execution:<"
+                        + inventory_retrieval_state_machine_logical_id
+                        + ".Name>/*"
+                    ],
+                }
+            ],
         )
 
         self.outputs[OutputKeys.INVENTORY_RETRIEVAL_STATE_MACHINE_ARN] = CfnOutput(
