@@ -14,7 +14,9 @@ from aws_cdk import aws_sns as sns
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_stepfunctions as sfn
+from aws_cdk import aws_stepfunctions_tasks as tasks
 from aws_cdk import RemovalPolicy
+from aws_cdk import CfnElement
 from cdk_nag import NagSuppressions
 from constructs import Construct
 from typing import Optional, Union
@@ -153,13 +155,6 @@ class RefreezerStack(Stack):
         # pause the workflow using waitForTaskToken mechanism
         dynamo_db_put = sfn.Pass(self, "DynamoDBPut")
 
-        # TODO: To be replaced by GenerateChunkArray LambdaInvoke task
-        # which will retrun the chunks array
-        parameters = {"chunk_array": ["0-499", "300-799"]}
-        generate_chunk_array_lambda = sfn.Pass(
-            self, "GenerateChunkArrayLambda", parameters=parameters
-        )
-
         inventory_chunk_determination_lambda = lambda_.Function(
             self,
             "InventoryChunkDetermination",
@@ -186,6 +181,37 @@ class RefreezerStack(Stack):
                         "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
                     ],
                 },
+            ],
+        )
+
+        # TODO: To be replaced by GenerateChunkArray LambdaInvoke task
+        # which will retrun the chunks array
+        # Lambda event input:  InventorySize, MaximumInventoryRecordSize, ChunkSize
+        # Lambda facilitator should return the inventory size as output or
+        # save it to the database and add aditional step to pull it?
+
+        # parameters = {"chunk_array": ["0-499", "300-799"]}
+        # generate_chunk_array_lambda = sfn.Pass(
+        #     self, "GenerateChunkArrayLambda", parameters=parameters
+        # )
+
+        generate_chunk_array_lambda = tasks.LambdaInvoke(
+            self,
+            "InventoryChunkDeterminationLambdaTask",
+            lambda_function=inventory_chunk_determination_lambda,
+        )
+
+        assert inventory_chunk_determination_lambda.role is not None
+        NagSuppressions.add_resource_suppressions(
+            inventory_chunk_determination_lambda.role.node.find_child("Resource"),
+            [
+                {
+                    "id": "AwsSolutions-IAM4",
+                    "reason": "CDK grants AWS managed policy for Lambda basic execution by default. Replacing it with a customer managed policy will be addressed later.",
+                    "appliesTo": [
+                        "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                    ],
+                }
             ],
         )
 
@@ -244,6 +270,31 @@ class RefreezerStack(Stack):
                     "id": "AwsSolutions-SF2",
                     "reason": "Step Function X-Ray tracing is disabled and will be addressed later.",
                 },
+            ],
+        )
+
+        assert isinstance(
+            inventory_chunk_determination_lambda.node.default_child, CfnElement
+        )
+        assert inventory_chunk_determination_lambda.role is not None
+        inventory_chunk_determination_lambda_logical_id = Stack.of(self).get_logical_id(
+            inventory_chunk_determination_lambda.node.default_child
+        )
+
+        NagSuppressions.add_resource_suppressions(
+            inventory_retrieval_state_machine.role.node.find_child(
+                "DefaultPolicy"
+            ).node.find_child("Resource"),
+            [
+                {
+                    "id": "AwsSolutions-IAM5",
+                    "reason": "CDK grants AWS managed policy for Lambda basic execution by default. Replacing it with a customer managed policy will be addressed later.",
+                    "appliesTo": [
+                        "Resource::<"
+                        + inventory_chunk_determination_lambda_logical_id
+                        + ".Arn>:*"
+                    ],
+                }
             ],
         )
 
