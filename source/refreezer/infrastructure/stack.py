@@ -832,9 +832,30 @@ class RefreezerStack(Stack):
             self, "RetrieveArchiveDynamoDBGetJob"
         )
 
-        # TODO: To be replaced by DynamoDB Put custom state for Step Function SDK integration
-        # pause the workflow using waitForTaskToken mechanism
-        retrieve_archive_dynamo_db_put = sfn.Pass(self, "RetrieveArchiveDynamoDBPut")
+        dynamo_db_put_state_json = {
+            "Type": "Task",
+            "Parameters": {
+                "TableName": table.table_name,
+                "Item": {
+                    "task_token": {
+                        "S.$": "$$.Task.Token",
+                    },
+                    "job_id": {
+                        "S.$": "$.JobId",
+                    },
+                    "start_timestamp": {
+                        "S.$": "$$.Execution.StartTime",
+                    },
+                },
+            },
+            "Resource": "arn:aws:states:::aws-sdk:dynamodb:putItem.waitForTaskToken",
+        }
+
+        retrieve_archive_dynamo_db_put = sfn.CustomState(
+            scope,
+            "RetrieveArchiveAsyncFacilitatorDynamoDBPut",
+            state_json=dynamo_db_put_state_json,
+        )
 
         # TODO: To be replaced by s3:createMultipartUpload task
         retrieve_archive_start_multipart_upload = sfn.Pass(
