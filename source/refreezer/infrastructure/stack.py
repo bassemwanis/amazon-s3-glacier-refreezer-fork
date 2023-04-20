@@ -1062,20 +1062,38 @@ class RefreezerStack(Stack):
         retrieve_archive_generate_chunk_array_lambda_task = sfn.Pass(
             self,
             "RetrieveArchiveGenerateChunkArrayLambda",
-            parameters={"chunk_array": ["0-499", "500-930"]},
+            parameters={"body": ["0-499", "500-930"]},
+            result_path="$.chunking_result",
         )
 
         # TODO: To be replaced by chunk processing LambdaInvoke task
         retrieve_archive_chunk_processing_lambda_task = sfn.Pass(
-            self, "RetrieveArchivechunkProcessingLambdaTask"
+            self,
+            "RetrieveArchivechunkProcessingLambdaTask",
         )
 
-        # TODO: To be replaced by a Map state in Distributed mode
-        retrieve_archive_chunk_distributed_map_state = sfn.Map(
-            self, "RetrieveArchiveChunkDistributedMap", items_path="$.chunk_array"
-        )
-        retrieve_archive_chunk_distributed_map_state.iterator(
-            retrieve_archive_chunk_processing_lambda_task
+        # # TODO: To be replaced by a Map state in Distributed mode
+        # retrieve_archive_chunk_distributed_map_state = sfn.Map(
+        #     self, "RetrieveArchiveChunkDistributedMap", items_path="$.chunk_array"
+        # )
+        # retrieve_archive_chunk_distributed_map_state.iterator(
+        #     retrieve_archive_chunk_processing_lambda_task
+        # )
+        retrieve_archive_chunk_distributed_map_state = DistributedMap(
+            self,
+            "RetrieveArchiveChunkDistributedMap",
+            definition=retrieve_archive_chunk_processing_lambda_task,
+            items_path="$.chunking_result.body",
+            item_selector={
+                "JobId": "test_job_id",
+                "Description": "test_file_name",
+                "VaultName": "test_vault_name",
+                "ByteRange.$": "$$.Map.Item.Value",
+                "S3DestinationBucket": output_bucket.bucket_name,
+                "S3DestinationKey.$": "States.Format('{}/vault', $.workflow_run)",
+                "UploadId": "test_upload_id",
+                "PartNumber.$": "$$.Map.Item.Index",
+            },
         )
 
         retrieve_archive_definition = (

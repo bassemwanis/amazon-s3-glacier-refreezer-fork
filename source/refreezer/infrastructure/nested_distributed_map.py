@@ -35,6 +35,7 @@ class NestedDistributedMap:
                 "bucket.$": "$.bucket",
                 "key.$": "$.item.Key",
                 "item.$": "$$.Map.Item.Value",
+                "workflow_run.$": "$.workflow_run",
             },
             result_writer={
                 "Resource": "arn:aws:states:::s3:putObject",
